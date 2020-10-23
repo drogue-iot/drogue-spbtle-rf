@@ -1,0 +1,20 @@
+[package]
+name = "drogue-spbtle-rf"
+version = "0.1.0"
+authors = ["Bob McWhirter <bmcwhirt@redhat.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+drogue-spi = { path = "../drogue-spi" }
+drogue-embedded-timer = { path = "../drogue-embedded-timer"}
+embedded-time = "0.10.0"
+embedded-hal = "0.2.4"
+log = "0.4.11"
+heapless = "0.5.6"
+
+[dependencies.nom]
+version = "5.1.0"
+default-features = false
+
