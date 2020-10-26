@@ -16,6 +16,7 @@ use crate::interface::Interface;
 use core::sync::atomic::{AtomicBool, Ordering};
 use crate::packet::RawPacket;
 use crate::hci::bluenrg::{BlueNrgEvent, BlueNrg};
+use crate::hci::Packet;
 
 pub struct Driver<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock>
     where
@@ -33,7 +34,7 @@ pub struct Driver<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock>
     clock: &'clock Clock,
     //
     requests: Consumer<'static, RawPacket, U16>,
-    responses: Producer<'static, RawPacket, U16>,
+    responses: Producer<'static, Packet<BlueNrg>, U16>,
     //
     initialized: bool,
 }
@@ -53,7 +54,7 @@ impl<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock> Driver<'clock, ChipSelect
                ready: ReadyPin,
                clock: &'clock Clock,
                request_queue: &'static mut Queue<RawPacket, U16>,
-               response_queue: &'static mut Queue<RawPacket, U16>,
+               response_queue: &'static mut Queue<Packet<BlueNrg>, U16>,
     ) -> (Self, Interface) {
         let (request_producer, request_consumer) = request_queue.split();
         let (response_producer, response_consumer) = response_queue.split();
@@ -122,10 +123,11 @@ impl<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock> Driver<'clock, ChipSelect
 
             log::info!("transfer from {:02X?}", &buf[0..readable_len as usize]);
             let result = crate::hci::parser::parse_packet::<BlueNrg>(&buf[0..readable_len as usize]);
+            log::info!("enqueuing ----> {:?}", result);
             if matches!(result, Ok(crate::hci::Packet::Event(crate::hci::Event::Vendor(BlueNrgEvent::BlueInitialized(_))))) {
                 self.initialized = true
             }
-            log::info!("{:?}", result);
+            self.responses.enqueue( result.unwrap() );
             self.cs.set_high();
             return;
         }

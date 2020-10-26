@@ -4,7 +4,6 @@ use heapless::{
 };
 use crate::hci::vendor::Vendor;
 use crate::hci::command::Command;
-use core::marker::PhantomData;
 
 type Payload = Vec<u8, U256>;
 

@@ -1,10 +1,14 @@
 use crate::hci::vendor::Vendor;
+use heapless::{
+    consts::*,
+    Vec
+};
 
 pub mod vendor;
 pub(crate) mod parser;
 pub(crate) mod opcode;
 pub(crate) mod command;
-pub(crate) mod bluenrg;
+pub mod bluenrg;
 
 #[derive(Debug)]
 pub enum Packet<V: Vendor> {
@@ -13,14 +17,20 @@ pub enum Packet<V: Vendor> {
 
 #[derive(Debug)]
 pub enum Event<V: Vendor> {
-    Hci(HciEvent),
+    Hci(HciEvent<V>),
     Vendor(V::Event),
 }
 
 #[derive(Debug)]
-pub enum HciEvent {
-    CommandComplete { packets: u8, opcode: u16 },
+pub enum HciEvent<V: Vendor> {
+    CommandComplete { packets: u8, opcode: u16, return_parameters: ReturnParameters<V> },
     CommandStatus { status: CommandStatusCode, packets: u8, opcode: u16 },
+}
+
+#[derive(Debug)]
+pub enum ReturnParameters<V: Vendor> {
+    Hci,
+    Vendor(V::ReturnParameters),
 }
 
 #[derive(Debug)]

@@ -1,9 +1,11 @@
 use crate::packet::RawPacket;
 use crate::hci::opcode::Opcode;
 use crate::hci::vendor::Vendor;
+use core::fmt::Debug;
 
 pub trait Command {
-    //fn opcode(&self) -> V::Opcode;
+    type ReturnParameters: Debug;
+
     fn opcode(&self) -> u16;
     fn parameters(&self) -> Option<&[u8]>;
 }

@@ -4,14 +4,18 @@ use nom::bytes::complete::take;
 use nom::combinator::{verify};
 use nom::number::complete::le_u16;
 use crate::hci::command::Command;
+use nom::error::ErrorKind;
 
 #[derive(Debug)]
 pub struct BlueNrg {}
 
 impl BlueNrg {
     fn blue_initialized_event(i: &[u8]) -> IResult<&[u8], <Self as Vendor>::Event> {
+        log::info!("try reason");
         let (i, _code) = verify(le_u16, |code: &u16| *code == 0x0001)(i)?;
         let (i, reason) = Self::blue_initialization_reason(i)?;
+
+        log::info!("reason {:?}", reason);
 
         Ok((
             i,
@@ -34,14 +38,41 @@ impl BlueNrg {
 impl Vendor for BlueNrg {
     type Opcode = BlueNrgOpcode;
     type Event = BlueNrgEvent;
+    type ReturnParameters = BlueNrgReturnParameters;
 
     fn vendor_event(i: &[u8]) -> IResult<&[u8], Self::Event> {
+        log::info!("try BlueNrg vendor event");
         let (i, vendor) = verify(take(1usize), |b: &[u8]| b[0] == 0xFF)(i)?;
         log::info!("vendor {:?}", vendor);
         let (i, len) = take(1usize)(i)?;
         log::info!("len {:?}", len);
-        Self::blue_initialized_event(i)
+        let r = Self::blue_initialized_event(i);
+        log::info!("whut {:?}", r);
+        r
     }
+
+    fn return_parameters(opcode: u16, i: &[u8]) -> IResult<&[u8], Self::ReturnParameters> {
+        log::info!( "return params {:#x?}", i);
+        match opcode {
+            0xFC00 => {
+                Ok( (&i[3..], BlueNrgReturnParameters::FirmwareBuildNumber {
+                    status: i[0],
+                    build_number: u16::from_le_bytes([ i[1], i[2] ])
+                } ) )
+            }
+            _ => {
+                IResult::Err( nom::Err::Failure( (i, ErrorKind::Tag) ) )
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum BlueNrgReturnParameters {
+    FirmwareBuildNumber{
+        status: u8,
+        build_number: u16,
+    },
 }
 
 #[derive(Debug)]
@@ -51,7 +82,14 @@ pub enum BlueNrgOpcode {
 
 pub struct GetFirmwareBuildNumber;
 
+#[derive(Debug)]
+pub struct FirmwareBuildNumber {
+    status: u8,
+    build_number: u16,
+}
+
 impl Command for GetFirmwareBuildNumber {
+    type ReturnParameters = FirmwareBuildNumber;
     fn opcode(&self) -> u16 {
         BlueNrgOpcode::GetFirmwareBuildNumber as u16
     }
@@ -59,6 +97,7 @@ impl Command for GetFirmwareBuildNumber {
     fn parameters(&self) -> Option<&[u8]> {
         None
     }
+
 }
 
 impl From<BlueNrgOpcode> for u16 {
