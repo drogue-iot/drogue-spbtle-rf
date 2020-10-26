@@ -3,6 +3,7 @@ use heapless::{
     consts::*,
     Vec
 };
+use crate::hci::command::Command;
 
 pub mod vendor;
 pub(crate) mod parser;
@@ -11,24 +12,55 @@ pub(crate) mod command;
 pub mod bluenrg;
 
 #[derive(Debug)]
-pub enum Packet<V: Vendor> {
-    Event(Event<V>),
+pub enum HciPacket<V: Vendor> {
+    Command(HciCommand<V>),
+    Event(HciEvent<V>),
 }
 
 #[derive(Debug)]
-pub enum Event<V: Vendor> {
-    Hci(HciEvent<V>),
-    Vendor(V::Event),
+pub enum HciCommand<V:Vendor> {
+    Hci,
+    Vendor(V::Command),
+}
+
+impl<V:Vendor> HciCommand<V> {
+    pub fn opcode(&self) -> u16 {
+        match self {
+            HciCommand::Hci => {
+                unimplemented!()
+            }
+            HciCommand::Vendor(vc) => {
+                vc.opcode()
+            }
+        }
+    }
+
+    pub fn parameters(&self) -> Option<&[u8]> {
+        match self {
+            HciCommand::Hci => {
+                unimplemented!()
+            }
+            HciCommand::Vendor(vc) => {
+                vc.parameters()
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum HciEvent<V: Vendor> {
-    CommandComplete { packets: u8, opcode: u16, return_parameters: ReturnParameters<V> },
+    Core(CoreEvent<V>),
+    Vendor(V::Event),
+}
+
+#[derive(Debug)]
+pub enum CoreEvent<V: Vendor> {
+    CommandComplete { packets: u8, opcode: u16, return_parameters: HciReturnParameters<V> },
     CommandStatus { status: CommandStatusCode, packets: u8, opcode: u16 },
 }
 
 #[derive(Debug)]
-pub enum ReturnParameters<V: Vendor> {
+pub enum HciReturnParameters<V: Vendor> {
     Hci,
     Vendor(V::ReturnParameters),
 }

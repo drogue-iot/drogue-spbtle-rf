@@ -16,7 +16,8 @@ use crate::interface::Interface;
 use core::sync::atomic::{AtomicBool, Ordering};
 use crate::packet::RawPacket;
 use crate::hci::bluenrg::{BlueNrgEvent, BlueNrg};
-use crate::hci::Packet;
+use crate::hci::HciPacket;
+use nom::InputIter;
 
 pub struct Driver<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock>
     where
@@ -33,8 +34,8 @@ pub struct Driver<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock>
     ready: ReadyPin,
     clock: &'clock Clock,
     //
-    requests: Consumer<'static, RawPacket, U16>,
-    responses: Producer<'static, Packet<BlueNrg>, U16>,
+    requests: Consumer<'static, HciPacket<BlueNrg>, U16>,
+    responses: Producer<'static, HciPacket<BlueNrg>, U16>,
     //
     initialized: bool,
 }
@@ -53,8 +54,8 @@ impl<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock> Driver<'clock, ChipSelect
                reset: ResetPin,
                ready: ReadyPin,
                clock: &'clock Clock,
-               request_queue: &'static mut Queue<RawPacket, U16>,
-               response_queue: &'static mut Queue<Packet<BlueNrg>, U16>,
+               request_queue: &'static mut Queue<HciPacket<BlueNrg>, U16>,
+               response_queue: &'static mut Queue<HciPacket<BlueNrg>, U16>,
     ) -> (Self, Interface) {
         let (request_producer, request_consumer) = request_queue.split();
         let (response_producer, response_consumer) = response_queue.split();
@@ -124,7 +125,7 @@ impl<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock> Driver<'clock, ChipSelect
             log::info!("transfer from {:02X?}", &buf[0..readable_len as usize]);
             let result = crate::hci::parser::parse_packet::<BlueNrg>(&buf[0..readable_len as usize]);
             log::info!("enqueuing ----> {:?}", result);
-            if matches!(result, Ok(crate::hci::Packet::Event(crate::hci::Event::Vendor(BlueNrgEvent::BlueInitialized(_))))) {
+            if matches!(result, Ok(crate::hci::HciPacket::Event(crate::hci::HciEvent::Vendor(BlueNrgEvent::BlueInitialized(_))))) {
                 self.initialized = true
             }
             self.responses.enqueue( result.unwrap() );
@@ -140,22 +141,38 @@ impl<'clock, ChipSelectPin, ResetPin, ReadyPin, Clock> Driver<'clock, ChipSelect
             return;
         }
 
-        while let Some(RawPacket::Command(mut payload)) = self.requests.dequeue() {
-            log::info!("fifo: {:?}", payload);
+        while let Some(HciPacket::Command(command)) = self.requests.dequeue() {
+            log::info!("fifo: {:?}", command);
 
             let mut buf = [0; 257];
-            //buf[0] = WRITE;
-            let len = payload.len();
-            log::info!("command to send >> {:#x?}", payload);
+            let opcode = command.opcode().to_le_bytes();
+            let payload = command.parameters();
+
+
+            buf[0] = 0x01;
+            buf[1] = opcode[0];
+            buf[2] = opcode[1];
+
+            let mut len = 4;
+
+            if let Some(payload) = payload {
+                buf[3] = payload.len() as u8;
+                for (i, b) in payload.iter().enumerate() {
+                    buf[len] = *b;
+                    len += 1
+                }
+            } else {
+                buf[3] = 0;
+            }
+
+            log::info!("command to send >> {:#x?} {}", &buf[..len], len);
             let (writable_len, readable_len) = self.block_until_writable(spi, len);
             log::info!(" writable {}, readable {}", writable_len, readable_len);
             log::info!(" sending {:#x?}", payload);
 
-            let mut buf = [0x01];
-            spi.transfer(&mut buf);
+            let result = spi.transfer(&mut buf[..len]);
+            log::info!("result -> {:?}", result);
 
-            let result = spi.transfer(payload.as_mut() );
-            log::info!("result {:?}", result);
             self.cs.set_high();
         }
 
